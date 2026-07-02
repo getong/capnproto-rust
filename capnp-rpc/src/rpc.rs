@@ -1067,7 +1067,7 @@ impl<VatId> ConnectionState<VatId> {
                 let question_id = ret.get_answer_id();
 
                 let mut questions = connection_state.questions.borrow_mut();
-                match questions.slots[question_id as usize] {
+                match questions.find(question_id) {
                     Some(ref mut question) => {
                         question.is_awaiting_return = false;
                         if ret.get_no_finish_needed() {
