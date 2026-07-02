@@ -1,3 +1,6 @@
+## v0.26.1
+- Avoid panic when Return message contains bad question ID.
+
 ## v0.26.0
 - Follow v0.26.0 release of other capnp crates.
 
