@@ -113,10 +113,7 @@ impl<T: TryFrom<u16, Error = NotInSchema>> Reader<'_, T> {
     }
 }
 
-impl<'a, T> crate::traits::IntoInternalListReader<'a> for Reader<'a, T>
-where
-    T: PrimitiveElement,
-{
+impl<'a, T> crate::traits::IntoInternalListReader<'a> for Reader<'a, T> {
     fn into_internal_list_reader(self) -> ListReader<'a> {
         self.reader
     }
