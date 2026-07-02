@@ -1626,9 +1626,9 @@ mod wire_helpers {
             ptr::write_bytes(
                 old_ptr.sub(BYTES_PER_WORD),
                 0,
-                usize::try_from(u64::from(old_step) * u64::from(element_count)).unwrap()
-                    * BYTES_PER_WORD
-                    + POINTER_SIZE_IN_WORDS,
+                (usize::try_from(u64::from(old_step) * u64::from(element_count)).unwrap()
+                    + POINTER_SIZE_IN_WORDS)
+                    * BYTES_PER_WORD,
             );
 
             Ok(ListBuilder {
@@ -3794,8 +3794,8 @@ impl<'a> StructBuilder<'a> {
         {
             // At least one of the section pointers is pointing to ourself. Verify that the other is too
             // (but ignore empty sections).
-            if (shared_data_size == 0 || other.data == self.data)
-                && (shared_pointer_count == 0 || other.pointers == self.pointers)
+            if !((shared_data_size == 0 || other.data == self.data)
+                && (shared_pointer_count == 0 || other.pointers == self.pointers))
             {
                 return Err(Error::from_kind(
                     ErrorKind::OnlyOneOfTheSectionPointersIsPointingToOurself,

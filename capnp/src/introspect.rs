@@ -111,6 +111,7 @@ impl Type {
     pub fn loose_equals(&self, other: Self) -> bool {
         match (self.which(), other.which()) {
             (TypeVariant::Void, TypeVariant::Void) => true,
+            (TypeVariant::Bool, TypeVariant::Bool) => true,
             (TypeVariant::UInt8, TypeVariant::UInt8) => true,
             (TypeVariant::UInt16, TypeVariant::UInt16) => true,
             (TypeVariant::UInt32, TypeVariant::UInt32) => true,

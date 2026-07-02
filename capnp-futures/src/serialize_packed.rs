@@ -55,6 +55,9 @@ where
     // number of bytes that we actually want to read into the buffer
     buf_size: usize,
 
+    // bit position within the tag byte, used by the DrainingBuffer stage
+    bitnum: usize,
+
     num_run_bytes_remaining: usize,
 }
 
@@ -71,6 +74,7 @@ where
             buf: [0; 10],
             buf_pos: 0,
             buf_size: 10,
+            bitnum: 0,
             num_run_bytes_remaining: 0,
         }
     }
@@ -92,6 +96,7 @@ where
             buf_pos,
             num_run_bytes_remaining,
             buf_size,
+            bitnum,
             ..
         } = &mut *self;
         loop {
@@ -101,6 +106,12 @@ where
                         Poll::Pending => return Poll::Pending,
                         Poll::Ready(n) => {
                             if n == 0 {
+                                if *buf_pos > 0 {
+                                    // We are mid-way through reading the tag word.
+                                    return Poll::Ready(Err(std::io::Error::from(
+                                        std::io::ErrorKind::UnexpectedEof,
+                                    )));
+                                }
                                 return Poll::Ready(Ok(0));
                             }
                             *buf_pos += n;
@@ -122,6 +133,7 @@ where
                                         // there is nothing left to buffer.
                                         *stage = PackedReadStage::DrainingBuffer;
                                         *buf_pos = 1;
+                                        *bitnum = 0;
                                     }
                                 }
                             }
@@ -155,21 +167,21 @@ where
                             if *buf_pos >= *buf_size {
                                 *stage = PackedReadStage::DrainingBuffer;
                                 *buf_pos = 1;
+                                *bitnum = 0;
                             }
                         }
                     }
                 }
                 PackedReadStage::DrainingBuffer => {
                     let mut ii = 0;
-                    let mut bitnum = *buf_pos - 1;
-                    while ii < outbuf.len() && bitnum < 8 {
-                        let is_nonzero = (buf[0] & (1u8 << bitnum)) != 0;
+                    while ii < outbuf.len() && *bitnum < 8 {
+                        let is_nonzero = (buf[0] & (1u8 << *bitnum)) != 0;
                         outbuf[ii] = buf[*buf_pos] & ((-i8::from(is_nonzero)) as u8);
                         ii += 1;
                         *buf_pos += usize::from(is_nonzero);
-                        bitnum += 1;
+                        *bitnum += 1;
                     }
-                    if bitnum == 8 {
+                    if *bitnum == 8 {
                         // We finished the word.
                         if *buf_pos == *buf_size {
                             // There are no passthrough words.
@@ -194,7 +206,10 @@ where
                             Poll::Pending => return Poll::Pending,
                             Poll::Ready(n) => {
                                 if n == 0 {
-                                    return Poll::Ready(Ok(0));
+                                    // We are mid-way through a pass-through run.
+                                    return Poll::Ready(Err(std::io::Error::from(
+                                        std::io::ErrorKind::UnexpectedEof,
+                                    )));
                                 }
                                 if n >= *num_run_bytes_remaining {
                                     *stage = PackedReadStage::Start;
@@ -708,6 +723,71 @@ pub mod test {
     #[test]
     fn check_packed_round_trip_async() {
         quickcheck(round_trip as fn(usize, usize, Vec<Vec<capnp::Word>>) -> TestResult);
+    }
+
+    /// Like `check_unpacks_to()`, but reads through an output buffer of `read_size` bytes,
+    /// so that a single word may take several reads to unpack.
+    fn check_unpacks_with_read_size(read_size: usize, packed: &[u8], unpacked: &[u8]) {
+        futures::executor::block_on(Box::pin(async {
+            let mut packed_read = PackedRead::new(packed);
+            let mut bytes: Vec<u8> = Vec::new();
+            let mut chunk = vec![0u8; read_size];
+            while bytes.len() < unpacked.len() {
+                let n = packed_read.read(&mut chunk[..]).await.expect("reading");
+                assert!(n > 0, "premature end of stream");
+                bytes.extend_from_slice(&chunk[..n]);
+            }
+            assert_eq!(bytes, unpacked);
+
+            // Nothing left to read.
+            assert_eq!(packed_read.read(&mut chunk[..]).await.expect("reading"), 0);
+        }));
+    }
+
+    #[test]
+    fn unpacks_across_partial_output_buffers() {
+        // Regression test: the DrainingBuffer stage used to reconstruct its position in
+        // the tag byte from the number of nonzero bytes consumed, so an output buffer
+        // boundary in a run of zero bits (forced here by the one-byte output buffer)
+        // would cause it to emit extra zero bytes and never terminate.
+        check_unpacks_with_read_size(1, &[0x81, 42, 99], &[42, 0, 0, 0, 0, 0, 0, 99]);
+
+        // An output buffer boundary in a run of nonzero bits.
+        check_unpacks_with_read_size(
+            3,
+            &[0xff, 1, 3, 2, 4, 5, 7, 6, 8, 1, 8, 6, 7, 4, 5, 2, 3, 1],
+            &[1, 3, 2, 4, 5, 7, 6, 8, 8, 6, 7, 4, 5, 2, 3, 1],
+        );
+    }
+
+    #[test]
+    fn eof_mid_tag_word() {
+        // The stream ends after the first byte of a tag word. This used to be
+        // treated as a clean end-of-file, silently dropping the byte.
+        let words = [0x81];
+        let result =
+            futures::executor::block_on(Box::pin(try_read_message(&words[..], Default::default())));
+
+        match result {
+            Ok(_) => panic!("expected error"),
+            Err(e) => assert_eq!(e.kind, capnp::ErrorKind::PrematureEndOfFile),
+        }
+    }
+
+    #[test]
+    fn eof_mid_passthrough_run() {
+        futures::executor::block_on(Box::pin(async {
+            // The tag promises two pass-through words (16 bytes), but the stream
+            // ends after four bytes. This used to be treated as a clean end-of-file.
+            let packed = [0xff, 1, 2, 3, 4, 5, 6, 7, 8, 2, 10, 11, 12, 13];
+            let mut packed_read = PackedRead::new(&packed[..]);
+            let mut bytes: Vec<u8> = Vec::new();
+            let error = packed_read
+                .read_to_end(&mut bytes)
+                .await
+                .expect_err("expected error");
+            assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
+        }));
     }
 
     #[test]

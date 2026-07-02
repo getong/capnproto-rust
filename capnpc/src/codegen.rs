@@ -2753,7 +2753,7 @@ fn generate_node(
                     Line("#[derive(Copy, Clone)]".into()),
                     line("pub struct Owned(());"),
                     Line(fmt!(ctx,"impl {capnp}::introspect::Introspect for Owned {{ fn introspect() -> {capnp}::introspect::Type {{ {capnp}::introspect::TypeVariant::Capability.into() }} }}")),
-                    line("impl ::capnp::traits::Owned for Owned { type Reader<'a> = Client; type Builder<'a> = Client; }"),
+                    Line(fmt!(ctx,"impl {capnp}::traits::Owned for Owned {{ type Reader<'a> = Client; type Builder<'a> = Client; }}")),
                     Line(fmt!(ctx,"impl {capnp}::traits::Pipelined for Owned {{ type Pipeline = Client; }}"))])
             } else {
                 Branch(vec![

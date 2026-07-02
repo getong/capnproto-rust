@@ -37,7 +37,7 @@ impl Viewport {
         let (ulx, uly) = self.upper_left();
         Self {
             x: ulx + (x * self.width),
-            y: uly + (y * self.width),
+            y: uly + (y * self.height),
             width: w * self.width,
             height: h * self.height,
         }

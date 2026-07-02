@@ -405,8 +405,8 @@ where
         Mode::Bytes => pass_by_bytes(testcase, reuse, compression, iters),
         Mode::Client => sync_client(testcase, reuse, compression, iters),
         Mode::Server => {
-            let input: ::std::fs::File = unsafe { ::std::os::unix::io::FromRawFd::from_raw_fd(1) };
-            let output: ::std::fs::File = unsafe { ::std::os::unix::io::FromRawFd::from_raw_fd(0) };
+            let input: ::std::fs::File = unsafe { ::std::os::unix::io::FromRawFd::from_raw_fd(0) };
+            let output: ::std::fs::File = unsafe { ::std::os::unix::io::FromRawFd::from_raw_fd(1) };
             server(testcase, reuse, compression, iters, input, output)
         }
         Mode::Pipe => pass_by_pipe(testcase, reuse, compression, iters),
