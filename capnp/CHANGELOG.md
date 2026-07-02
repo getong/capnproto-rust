@@ -1,3 +1,8 @@
+## v0.26.1
+- Fix case where zeroing missed 7 bytes.
+- Remove spurious bound from IntoInternalListReader impl for enum_list.
+- Add missing (Bool, Bool) case in introspect.rs.
+
 ## v0.26.0
 - Use GeneratedCodeArena in construction of RawEnumSchema, avoiding need for an unsafe{}.
 - Update Allocator methods to use NonNull.
