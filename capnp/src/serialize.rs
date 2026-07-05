@@ -375,7 +375,7 @@ where
             return Err(Error::from_kind(ErrorKind::BufferNotLargeEnough));
         }
 
-        read.read(&mut buffer[start..end])?;
+        read.read_exact(&mut buffer[start..end])?;
 
         total_body_words = total_body_words
             .checked_add(
@@ -872,6 +872,32 @@ pub mod test {
         .unwrap();
         assert_eq!(1, segment_lengths_builder.total_words());
         assert_eq!(vec![(0, 1)], segment_lengths_builder.to_segment_indices());
+    }
+
+    #[test]
+    fn test_try_read_message_no_alloc_max_read() {
+        // A message with multiple segments, so that reading the segment table
+        // requires more than one read() call.
+        let mut msg = message::Builder::new(message::HeapAllocator::new().first_segment_words(1));
+        msg.set_root("hello world!").unwrap();
+        assert!(msg.get_segments_for_output().len() > 1);
+
+        let mut bytes = alloc::vec::Vec::new();
+        super::write_message(&mut bytes, &msg).unwrap();
+
+        let mut buffer = [crate::word(0, 0, 0, 0, 0, 0, 0, 0); 64];
+        let reader = super::try_read_message_no_alloc(
+            MaxRead {
+                inner: &bytes[..],
+                max: 2,
+            },
+            crate::Word::words_to_bytes_mut(&mut buffer),
+            message::ReaderOptions::new(),
+        )
+        .unwrap()
+        .unwrap();
+        let text: crate::text::Reader = reader.get_root().unwrap();
+        assert_eq!("hello world!", text);
     }
 
     #[test]
