@@ -1,3 +1,7 @@
+## v0.26.2
+- Avoid possible panic in `BufferSegments::new()`.
+- Avoid possible desyncing in `read_message_no_alloc()`.
+
 ## v0.26.1
 - Fix case where zeroing missed 7 bytes.
 - Remove spurious bound from IntoInternalListReader impl for enum_list.
