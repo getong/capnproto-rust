@@ -127,7 +127,13 @@ impl<T: core::ops::Deref<Target = [u8]>> BufferSegments<T> {
         };
         let segment_table_bytes_len = buffer.len() - segment_bytes.len();
 
-        assert!(segment_table.total_words() * 8 <= buffer.len());
+        if segment_table.total_words() * 8 > segment_bytes.len() {
+            return Err(Error::from_kind(ErrorKind::MessageEndsPrematurely(
+                segment_table.total_words(),
+                segment_bytes.len() / 8,
+            )));
+        }
+
         let segment_indices = segment_table.to_segment_indices();
         Ok(Self {
             buffer,
